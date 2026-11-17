@@ -101,7 +101,7 @@ Sau khi chạy:
 
 ### Build & Test cục bộ
 
-- **Android** (Gradle `9.3.1`, JDK 17+):
+- **Android** (Gradle `9.3.1`, JDK 21):
   ```bash
   gradle :app:testDebugUnitTest
   gradle :app:assembleDebug
