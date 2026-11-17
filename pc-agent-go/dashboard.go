@@ -1,11 +1,17 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html"
 	"net/url"
+	"strconv"
+	"strings"
 )
+
+//go:embed dashboard.html
+var dashboardHTMLTemplate string
 
 func buildPairURI(lanIP string, port int, cfg HostConfig) string {
 	return fmt.Sprintf(
@@ -21,295 +27,16 @@ func renderDashboardHTML(lanIP string, port int, cfg HostConfig) string {
 	pairURI := buildPairURI(lanIP, port, cfg)
 	qrSVG := encodeQRSVG(pairURI, 210)
 	cfgBytes, _ := json.Marshal(cfg)
-	cfgJSON := string(cfgBytes)
-	rssMB := readProcessRSSMBPlatform()
-	safePCName := html.EscapeString(cfg.PCName)
-	safeToken := html.EscapeString(cfg.Token)
-	safeIP := html.EscapeString(lanIP)
+	rssMB := fmt.Sprintf("%.1f", readProcessRSSMBPlatform())
 
-	return fmt.Sprintf(`<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>DeskDeck PC Dashboard — %s</title>
-<style>
-  :root {
-    --bg: #0B0E14; --surface: #131822; --elev: #1A2130; --border: #252F42;
-    --cyan: #38BDF8; --violet: #A78BFA; --green: #22C55E; --amber: #F59E0B;
-    --text: #F1F5F9; --muted: #94A3B8;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text); padding: 24px; }
-  .wrap { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 340px 1fr; gap: 20px; }
-  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; }
-  h1, h2, h3 { margin: 0 0 10px; font-weight: 700; letter-spacing: -0.02em; }
-  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #1E293B; border: 1px solid var(--border); }
-  .dot { width: 8px; height: 8px; border-radius: 50%%; background: var(--green); }
-  .qr-box { display: flex; justify-content: center; padding: 14px; background: #fff; border-radius: 14px; margin: 14px 0; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--cyan); word-break: break-all; }
-  .btn { background: var(--cyan); color: #061018; border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; font-size: 13px; }
-  .btn:hover { filter: brightness(1.08); }
-  .btn-sec { background: var(--elev); color: var(--text); border: 1px solid var(--border); }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .widget-chip { display: flex; justify-content: space-between; align-items: center; background: var(--elev); border: 1px solid var(--border); padding: 10px 12px; border-radius: 12px; margin-bottom: 8px; }
-  input, select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 13px; }
-  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--green); color: #052e16; font-weight: 700; padding: 10px 16px; border-radius: 10px; display: none; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="card">
-    <div class="row" style="justify-content:space-between">
-      <h2>DeskDeck PC</h2>
-      <span class="badge"><span class="dot"></span>%.1f MB RAM (Native)</span>
-    </div>
-    <p style="color:var(--muted);font-size:13px;margin-top:4px;">Quét mã QR bằng app DeskDeck để kết nối Wi-Fi 1 chạm:</p>
-    <div class="qr-box">%s</div>
-    <div class="mono">Wi-Fi: %s:%d</div>
-    <div class="mono" style="color:var(--violet);margin-top:4px;">Token: %s</div>
-    <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
-    <div class="row">
-      <button class="btn btn-sec" onclick="runAdbReverse()">Kích hoạt USB (ADB Reverse)</button>
-      <button class="btn btn-sec" onclick="sendTestNotif()">Gửi thử thông báo</button>
-      <button class="btn btn-sec" onclick="sendTestAi()">Thử AI Approval</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="row" style="justify-content:space-between;margin-bottom:14px">
-      <div>
-        <h2>Tùy chỉnh Dashboard & Shortcuts</h2>
-        <div style="color:var(--muted);font-size:13px;">Thay đổi sẽ đồng bộ ngay lập tức xuống điện thoại đang kết nối</div>
-      </div>
-      <button class="btn" onclick="saveAndSync()">Lưu &amp; Đồng bộ Điện thoại</button>
-    </div>
-
-    <div class="row" style="margin-bottom:16px">
-      <span style="font-size:13px;color:var(--muted)">Mẫu nhanh:</span>
-      <button class="btn btn-sec" onclick="applyPreset('full')">Stream Deck Chuẩn</button>
-      <button class="btn btn-sec" onclick="applyPreset('focus')">Focus Pomodoro</button>
-      <button class="btn btn-sec" onclick="applyPreset('dev')">Developer Cockpit</button>
-      <button class="btn btn-sec" onclick="applyPreset('minimal')">Tối giản</button>
-    </div>
-
-    <h3>Shortcut Mở Ứng dụng (App Launcher)</h3>
-    <div id="apps-list" style="margin-bottom:14px"></div>
-    <div class="row" style="margin-bottom:18px">
-      <input id="new-app-label" placeholder="Tên (vd: Terminal, Warp)" />
-      <input id="new-app-cmd" placeholder="Lệnh (vd: terminal, code, wt.exe)" />
-      <button class="btn btn-sec" onclick="addAppShortcut()">+ Thêm App</button>
-    </div>
-
-    <div class="row" style="justify-content:space-between;margin-bottom:10px">
-      <h3 style="margin:0">Các Màn hình &amp; Widget (lướt ngang Stream Deck)</h3>
-      <button class="btn btn-sec" onclick="addPage()">+ Thêm Màn hình</button>
-    </div>
-    <div id="pages-editor"></div>
-  </div>
-</div>
-<div id="toast" class="toast"></div>
-<script>
-let cfg = %s;
-const WIDGET_CATALOG = [
-  { type: 'CLOCK_WEATHER', title: 'Đồng hồ & Hệ thống', colSpan: 2, accent: 'cyan' },
-  { type: 'POMODORO_TIMER', title: 'Pomodoro Focus', colSpan: 2, accent: 'red' },
-  { type: 'CPU_LOAD', title: 'CPU', colSpan: 1, accent: 'cyan' },
-  { type: 'RAM_USAGE', title: 'RAM', colSpan: 1, accent: 'violet' },
-  { type: 'GPU_STATS', title: 'GPU & Nhiệt độ', colSpan: 2, accent: 'amber' },
-  { type: 'NETWORK_SPEED', title: 'Mạng & Ổ đĩa', colSpan: 2, accent: 'emerald' },
-  { type: 'MEDIA_PLAYER', title: 'Trình phát Media', colSpan: 2, accent: 'cyan' },
-  { type: 'VOLUME_MIXER', title: 'Âm lượng PC', colSpan: 2, accent: 'amber' },
-  { type: 'APP_LAUNCHER', title: 'Mở nhanh ứng dụng', colSpan: 2, accent: 'cyan' },
-  { type: 'MACRO_BUTTON', title: 'Phím tắt Macro', colSpan: 2, accent: 'violet' },
-  { type: 'DEV_DOCKER_GIT', title: 'Docker & Git Status', colSpan: 2, accent: 'emerald' },
-  { type: 'AI_QUOTA_PROMPT', title: 'AI Coding & Duyệt lệnh', colSpan: 2, accent: 'violet' },
-  { type: 'PC_NOTIFICATIONS', title: 'Thông báo PC', colSpan: 4, accent: 'amber' },
-];
-function esc(s) { return String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 2400);
-}
-function render() {
-  const appsDiv = document.getElementById('apps-list');
-  appsDiv.innerHTML = cfg.apps.map((a, idx) => `
-    <div class="widget-chip">
-      <span><strong>${esc(a.label)}</strong> <span class="mono">(${esc(a.command)})</span></span>
-      <button class="btn btn-sec" onclick="cfg.apps.splice(${idx},1);render()">Xóa</button>
-    </div>`).join('');
-
-  const optsHtml = WIDGET_CATALOG.map((item, i) => `<option value="${i}">${item.title} (${item.type})</option>`).join('');
-  const pagesDiv = document.getElementById('pages-editor');
-  pagesDiv.innerHTML = cfg.layout.pages.map((p, pi) => `
-    <div style="margin-bottom:14px;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--bg)">
-      <div class="row" style="justify-content:space-between;margin-bottom:10px">
-        <div class="row" style="flex:1">
-          <span class="badge" style="color:var(--cyan)">Màn hình ${pi+1}</span>
-          <input value="${esc(p.title)}" onchange="cfg.layout.pages[${pi}].title=this.value" style="min-width:190px;flex:1" />
-        </div>
-        <div class="row">
-          <button class="btn btn-sec" onclick="movePage(${pi},-1)" ${pi===0?'disabled':''}>←</button>
-          <button class="btn btn-sec" onclick="movePage(${pi},1)" ${pi===cfg.layout.pages.length-1?'disabled':''}>→</button>
-          <button class="btn btn-sec" onclick="deletePage(${pi})" ${cfg.layout.pages.length<=1?'disabled':''}>Xóa màn hình</button>
-        </div>
-      </div>
-
-      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
-        ${p.widgets.map((w, wi) => `
-          <div class="widget-chip" style="margin-bottom:0;gap:8px;flex-wrap:wrap">
-            <input value="${esc(w.title)}" onchange="cfg.layout.pages[${pi}].widgets[${wi}].title=this.value" style="flex:1;min-width:150px" />
-            <small class="mono" style="color:var(--muted)">${esc(w.type)}</small>
-            <select onchange="cfg.layout.pages[${pi}].widgets[${wi}].colSpan=Number(this.value)">
-              ${[1,2,3,4].map(c => `<option value="${c}" ${Number(w.colSpan)===c?'selected':''}>${c} cột</option>`).join('')}
-            </select>
-            <select onchange="cfg.layout.pages[${pi}].widgets[${wi}].accentColorKey=this.value">
-              ${['cyan','violet','emerald','amber','red'].map(cl => `<option value="${cl}" ${(w.accentColorKey||'cyan')===cl?'selected':''}>${cl}</option>`).join('')}
-            </select>
-            <button class="btn btn-sec" onclick="moveWidget(${pi},${wi},-1)" ${wi===0?'disabled':''}>↑</button>
-            <button class="btn btn-sec" onclick="moveWidget(${pi},${wi},1)" ${wi===p.widgets.length-1?'disabled':''}>↓</button>
-            <button class="btn btn-sec" onclick="cfg.layout.pages[${pi}].widgets.splice(${wi},1);render()">×</button>
-          </div>`).join('')}
-      </div>
-
-      <div class="row">
-        <select id="add-widget-sel-${pi}" style="flex:1">${optsHtml}</select>
-        <button class="btn btn-sec" onclick="addWidgetToPage(${pi})">+ Thêm Widget</button>
-      </div>
-    </div>`).join('');
-}
-function addPage() {
-  cfg.layout.pages.push({ id: 'page_' + Date.now(), title: 'Màn hình ' + (cfg.layout.pages.length + 1), widgets: [] });
-  render();
-}
-function movePage(pi, dir) {
-  const target = pi + dir;
-  if (target < 0 || target >= cfg.layout.pages.length) return;
-  const arr = cfg.layout.pages;
-  [arr[pi], arr[target]] = [arr[target], arr[pi]];
-  render();
-}
-function deletePage(pi) {
-  if (cfg.layout.pages.length <= 1) return;
-  cfg.layout.pages.splice(pi, 1);
-  render();
-}
-function moveWidget(pi, wi, dir) {
-  const arr = cfg.layout.pages[pi].widgets;
-  const target = wi + dir;
-  if (target < 0 || target >= arr.length) return;
-  [arr[wi], arr[target]] = [arr[target], arr[wi]];
-  render();
-}
-function addWidgetToPage(pi) {
-  const sel = document.getElementById('add-widget-sel-' + pi);
-  const item = WIDGET_CATALOG[Number(sel.value)] || WIDGET_CATALOG[0];
-  cfg.layout.pages[pi].widgets.push({
-    id: 'w_' + item.type.toLowerCase() + '_' + (Date.now() % 100000),
-    type: item.type,
-    title: item.title,
-    colSpan: item.colSpan,
-    accentColorKey: item.accent,
-  });
-  render();
-}
-function addAppShortcut() {
-  const label = document.getElementById('new-app-label').value.trim();
-  const cmd = document.getElementById('new-app-cmd').value.trim();
-  if (!label || !cmd) return;
-  cfg.apps.push({ id: 'app_' + Date.now(), label, command: cmd, icon: 'terminal', color: 'cyan' });
-  document.getElementById('new-app-label').value = '';
-  document.getElementById('new-app-cmd').value = '';
-  render();
-}
-function applyPreset(mode) {
-  if (mode === 'minimal') {
-    cfg.layout.presetName = 'Tối giản';
-    cfg.layout.pages = [{ id: 'p1', title: 'Desk Minimal', widgets: [
-      { id: 'w_clock', type: 'CLOCK_WEATHER', title: 'Đồng hồ', colSpan: 2, accentColorKey: 'cyan' },
-      { id: 'w_pomo', type: 'POMODORO_TIMER', title: 'Pomodoro Focus', colSpan: 2, accentColorKey: 'red' },
-      { id: 'w_apps', type: 'APP_LAUNCHER', title: 'Mở nhanh App', colSpan: 2, accentColorKey: 'cyan' },
-      { id: 'w_vol', type: 'VOLUME_MIXER', title: 'Âm lượng', colSpan: 2, accentColorKey: 'amber' },
-    ]}];
-  } else if (mode === 'focus') {
-    cfg.layout.presetName = 'Focus Pomodoro';
-    cfg.layout.pages = [
-      { id: 'p_f1', title: 'Focus Station', widgets: [
-        { id: 'w_pomo', type: 'POMODORO_TIMER', title: 'Pomodoro Focus', colSpan: 2, accentColorKey: 'red' },
-        { id: 'w_clock', type: 'CLOCK_WEATHER', title: 'Đồng hồ', colSpan: 2, accentColorKey: 'cyan' },
-        { id: 'w_media', type: 'MEDIA_PLAYER', title: 'Nhạc Focus', colSpan: 2, accentColorKey: 'cyan' },
-        { id: 'w_vol', type: 'VOLUME_MIXER', title: 'Âm lượng PC', colSpan: 2, accentColorKey: 'amber' },
-      ]},
-      { id: 'p_f2', title: 'App & Hệ thống', widgets: [
-        { id: 'w_apps', type: 'APP_LAUNCHER', title: 'Mở nhanh ứng dụng', colSpan: 2, accentColorKey: 'cyan' },
-        { id: 'w_cpu', type: 'CPU_LOAD', title: 'CPU', colSpan: 1, accentColorKey: 'cyan' },
-        { id: 'w_ram', type: 'RAM_USAGE', title: 'RAM', colSpan: 1, accentColorKey: 'violet' },
-      ]}
-    ];
-  } else if (mode === 'dev') {
-    cfg.layout.presetName = 'Developer Cockpit';
-    cfg.layout.pages = [
-      { id: 'p_d1', title: 'Dev & Terminal', widgets: [
-        { id: 'w_apps', type: 'APP_LAUNCHER', title: 'Terminal & Apps', colSpan: 2, accentColorKey: 'cyan' },
-        { id: 'w_macros', type: 'MACRO_BUTTON', title: 'Macro Dev', colSpan: 2, accentColorKey: 'violet' },
-        { id: 'w_ai', type: 'AI_QUOTA_PROMPT', title: 'AI Approval', colSpan: 2, accentColorKey: 'violet' },
-        { id: 'w_dev', type: 'DEV_DOCKER_GIT', title: 'Docker & Git', colSpan: 2, accentColorKey: 'emerald' },
-      ]},
-      { id: 'p_d2', title: 'Telemetry & Focus', widgets: [
-        { id: 'w_pomo', type: 'POMODORO_TIMER', title: 'Pomodoro Focus', colSpan: 2, accentColorKey: 'red' },
-        { id: 'w_cpu', type: 'CPU_LOAD', title: 'CPU', colSpan: 1, accentColorKey: 'cyan' },
-        { id: 'w_ram', type: 'RAM_USAGE', title: 'RAM', colSpan: 1, accentColorKey: 'violet' },
-        { id: 'w_notif', type: 'PC_NOTIFICATIONS', title: 'Thông báo PC', colSpan: 4, accentColorKey: 'amber' },
-      ]}
-    ];
-  } else {
-    cfg.layout.presetName = 'Stream Deck Chuẩn';
-    cfg.layout.pages = [
-      { id: 'page_overview', title: 'Tổng quan & Focus', widgets: [
-        { id: 'w_clock', type: 'CLOCK_WEATHER', title: 'Đồng hồ & Hệ thống', colSpan: 2, accentColorKey: 'cyan' },
-        { id: 'w_pomo', type: 'POMODORO_TIMER', title: 'Pomodoro Focus', colSpan: 2, accentColorKey: 'red' },
-        { id: 'w_cpu', type: 'CPU_LOAD', title: 'CPU', colSpan: 1, accentColorKey: 'cyan' },
-        { id: 'w_ram', type: 'RAM_USAGE', title: 'RAM', colSpan: 1, accentColorKey: 'violet' },
-        { id: 'w_media', type: 'MEDIA_PLAYER', title: 'Trình phát Media', colSpan: 2, accentColorKey: 'cyan' },
-        { id: 'w_vol', type: 'VOLUME_MIXER', title: 'Âm lượng PC', colSpan: 2, accentColorKey: 'amber' },
-        { id: 'w_net', type: 'NETWORK_SPEED', title: 'Mạng & Ổ đĩa', colSpan: 2, accentColorKey: 'emerald' },
-      ]},
-      { id: 'page_shortcuts', title: 'App & Macro Deck', widgets: [
-        { id: 'w_apps', type: 'APP_LAUNCHER', title: 'Mở nhanh ứng dụng', colSpan: 2, accentColorKey: 'cyan' },
-        { id: 'w_macros', type: 'MACRO_BUTTON', title: 'Phím tắt Macro', colSpan: 2, accentColorKey: 'violet' },
-        { id: 'w_gpu', type: 'GPU_STATS', title: 'GPU & Nhiệt độ', colSpan: 2, accentColorKey: 'amber' },
-      ]},
-      { id: 'page_dev', title: 'Dev & Thông báo', widgets: [
-        { id: 'w_ai', type: 'AI_QUOTA_PROMPT', title: 'AI Coding & Duyệt lệnh', colSpan: 2, accentColorKey: 'violet' },
-        { id: 'w_dev', type: 'DEV_DOCKER_GIT', title: 'Docker & Git Status', colSpan: 2, accentColorKey: 'emerald' },
-        { id: 'w_notif', type: 'PC_NOTIFICATIONS', title: 'Thông báo PC', colSpan: 4, accentColorKey: 'amber' },
-      ]}
-    ];
-  }
-  render();
-  saveAndSync();
-}
-async function saveAndSync() {
-  await fetch('/api/config', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cfg) });
-  showToast('Đã lưu & đồng bộ xuống điện thoại!');
-}
-async function runAdbReverse() {
-  const r = await fetch('/api/adb-reverse', { method: 'POST' });
-  const d = await r.json();
-  showToast(d.message);
-}
-async function sendTestNotif() {
-  await fetch('/api/test-notification', { method: 'POST' });
-  showToast('Đã đẩy thông báo xuống điện thoại');
-}
-async function sendTestAi() {
-  await fetch('/api/ai-prompt', { method: 'POST' });
-  showToast('Đã gửi yêu cầu duyệt lệnh AI xuống điện thoại');
-}
-render();
-</script>
-</body>
-</html>`, safePCName, rssMB, qrSVG, safeIP, port, safeToken, cfgJSON)
+	replacer := strings.NewReplacer(
+		"__PC_NAME__", html.EscapeString(cfg.PCName),
+		"__RSS_MB__", rssMB,
+		"__QR_SVG__", qrSVG,
+		"__LAN_IP__", html.EscapeString(lanIP),
+		"__PORT__", strconv.Itoa(port),
+		"__TOKEN__", html.EscapeString(cfg.Token),
+		"__CFG_JSON__", string(cfgBytes),
+	)
+	return replacer.Replace(dashboardHTMLTemplate)
 }
