@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"os"
 	"os/exec"
 	"strconv"
@@ -26,6 +26,7 @@ type AckMessage struct {
 }
 
 func launchAppAction(cfg HostConfig, appKey string) string {
+	lang := normalizeLanguage(cfg.Language)
 	cmd := appKey
 	for _, a := range cfg.Apps {
 		if a.ID == appKey || a.Command == appKey {
@@ -37,9 +38,9 @@ func launchAppAction(cfg HostConfig, appKey string) string {
 	switch cmd {
 	case "terminal":
 		if err := launchTerminalPlatform(); err != nil {
-			return fmt.Sprintf("Lỗi mở Terminal: %v", err)
+			return tr(lang, "ack_terminal_err", err)
 		}
-		return "Đã mở Terminal"
+		return tr(lang, "ack_terminal_opened")
 	case "vscode":
 		repo := cfg.RepoPath
 		if repo == "" {
@@ -51,15 +52,15 @@ func launchAppAction(cfg HostConfig, appKey string) string {
 			c := exec.Command("code", repo)
 			hideSubprocessWindow(c)
 			if err := c.Start(); err == nil {
-				return "Đã mở VS Code"
+				return tr(lang, "ack_vscode_opened")
 			}
 		}
-		return "Không tìm thấy lệnh code (VS Code)"
+		return tr(lang, "ack_vscode_missing")
 	case "browser":
 		if err := openBrowserPlatform("https://github.com"); err != nil {
-			return fmt.Sprintf("Lỗi mở trình duyệt: %v", err)
+			return tr(lang, "ack_browser_err", err)
 		}
-		return "Đã mở Trình duyệt"
+		return tr(lang, "ack_browser_opened")
 	case "explorer":
 		p := cfg.RepoPath
 		if p == "" {
@@ -68,22 +69,23 @@ func launchAppAction(cfg HostConfig, appKey string) string {
 			}
 		}
 		if err := launchExplorerPlatform(p); err != nil {
-			return fmt.Sprintf("Lỗi mở Explorer: %v", err)
+			return tr(lang, "ack_files_err", err)
 		}
-		return "Đã mở Trình quản lý tệp"
+		return tr(lang, "ack_files_opened")
 	case "docker_desktop":
 		_ = launchDockerDesktopPlatform()
-		return "Đã kích hoạt Docker"
+		return tr(lang, "ack_docker_launched")
 	default:
 		if err := runShellCommandPlatform(cmd); err != nil {
-			return fmt.Sprintf("Lỗi mở app: %v", err)
+			return tr(lang, "ack_app_err", err)
 		}
-		return "Đã mở: " + cmd
+		return tr(lang, "ack_app_opened", cmd)
 	}
 }
 
-func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent) AckMessage {
-	msg := "Đã thực thi"
+func executeEventAction(ctx context.Context, cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent) AckMessage {
+	lang := normalizeLanguage(cfg.Language)
+	msg := tr(lang, "ack_executed")
 
 	switch ev.Type {
 	case "LAUNCH_APP":
@@ -100,13 +102,13 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 		switch macroCmd {
 		case "lock_screen":
 			lockScreenPlatform()
-			msg = "Đã khóa màn hình PC"
+			msg = tr(lang, "ack_screen_locked")
 		case "screenshot":
 			sendMediaKeyPlatform(0x2C)
-			msg = "Đã chụp màn hình"
+			msg = tr(lang, "ack_screenshot")
 		default:
 			_ = runShellCommandPlatform(macroCmd)
-			msg = "Đã chạy macro: " + ev.Value
+			msg = tr(lang, "ack_macro_ran", ev.Value)
 		}
 
 	case "SET_VOLUME":
@@ -121,8 +123,8 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 			tc.mu.Lock()
 			tc.masterVolume = vol
 			tc.mu.Unlock()
-			applySystemVolumePlatform(vol)
-			msg = fmt.Sprintf("Âm lượng: %d%%", vol)
+			applySystemVolumePlatform(ctx, vol)
+			msg = tr(lang, "ack_volume_set", vol)
 		}
 
 	case "TOGGLE_MUTE":
@@ -132,9 +134,9 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 		tc.mu.Unlock()
 		applySystemMutePlatform(muted)
 		if muted {
-			msg = "Đã tắt tiếng PC"
+			msg = tr(lang, "ack_muted")
 		} else {
-			msg = "Đã bật tiếng PC"
+			msg = tr(lang, "ack_unmuted")
 		}
 
 	case "TOGGLE_MIC_MUTE":
@@ -143,9 +145,9 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 		micMuted := tc.micMuted
 		tc.mu.Unlock()
 		if micMuted {
-			msg = "Đã tắt Micro"
+			msg = tr(lang, "ack_mic_muted")
 		} else {
-			msg = "Đã bật Micro"
+			msg = tr(lang, "ack_mic_unmuted")
 		}
 
 	case "MEDIA_CMD":
@@ -155,13 +157,13 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 			tc.mediaPlaying = !tc.mediaPlaying
 			tc.mu.Unlock()
 			sendMediaKeyPlatform(0xB3)
-			msg = "Phát / Tạm dừng Media"
+			msg = tr(lang, "ack_media_toggle")
 		case "next":
 			sendMediaKeyPlatform(0xB0)
-			msg = "Bài tiếp theo"
+			msg = tr(lang, "ack_media_next")
 		case "prev":
 			sendMediaKeyPlatform(0xB1)
-			msg = "Bài trước"
+			msg = tr(lang, "ack_media_prev")
 		}
 
 	case "DOCKER_TOGGLE":
@@ -175,9 +177,9 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 			c := exec.Command("docker", dockerCmd, name)
 			hideSubprocessWindow(c)
 			if err := c.Start(); err != nil {
-				msg = fmt.Sprintf("Docker error: %v", err)
+				msg = tr(lang, "ack_docker_err", err)
 			} else {
-				msg = fmt.Sprintf("Docker %s: %s", dockerCmd, name)
+				msg = tr(lang, "ack_docker_action", dockerCmd, name)
 			}
 		}
 
@@ -186,9 +188,9 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 		tc.aiPendingPrompt = nil
 		tc.mu.Unlock()
 		if ev.Value == "allow" {
-			msg = "Đã duyệt lệnh AI"
+			msg = tr(lang, "ack_ai_allowed")
 		} else {
-			msg = "Đã từ chối lệnh AI"
+			msg = tr(lang, "ack_ai_denied")
 		}
 
 	case "DISMISS_NOTIF":
@@ -201,7 +203,7 @@ func executeEventAction(cfg HostConfig, tc *TelemetryCollector, ev IncomingEvent
 		}
 		tc.notifications = filtered
 		tc.mu.Unlock()
-		msg = "Đã xóa thông báo"
+		msg = tr(lang, "ack_notif_dismissed")
 	}
 
 	return AckMessage{

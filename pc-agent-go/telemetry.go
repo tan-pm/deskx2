@@ -77,6 +77,7 @@ type GitSummary struct {
 
 type TelemetryCollector struct {
 	mu              sync.Mutex
+	hostname        string
 	bootTime        time.Time
 	prevCpuTotal    uint64
 	prevCpuIdle     uint64
@@ -90,6 +91,7 @@ type TelemetryCollector struct {
 	mediaPlaying    bool
 	mediaTitle      string
 	mediaArtist     string
+	hasCustomMedia  bool
 	masterVolume    int
 	isMuted         bool
 	micMuted        bool
@@ -108,6 +110,7 @@ func round1(v float64) float64 {
 }
 
 func newTelemetryCollector(cfg HostConfig) *TelemetryCollector {
+	lang := normalizeLanguage(cfg.Language)
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
 		hostname = cfg.PCName
@@ -119,12 +122,13 @@ func newTelemetryCollector(cfg HostConfig) *TelemetryCollector {
 		}
 	}
 	return &TelemetryCollector{
+		hostname:     hostname,
 		bootTime:     time.Now(),
 		prevNetTime:  time.Now(),
 		cpuHistory:   []float64{18.0, 22.0, 20.0, 25.0, 21.0, 19.0, 24.0, 23.0},
 		ramHistory:   []float64{46.0, 46.2, 46.5, 46.4, 47.0, 46.8, 47.1, 47.0},
-		mediaTitle:   "Chưa có media đang phát",
-		mediaArtist:  "Desktop Audio",
+		mediaTitle:   tr(lang, "media_idle"),
+		mediaArtist:  tr(lang, "media_source"),
 		masterVolume: 68,
 		cachedDocker: []DockerContainerItem{},
 		cachedGit: GitSummary{
@@ -135,11 +139,27 @@ func newTelemetryCollector(cfg HostConfig) *TelemetryCollector {
 			{
 				ID:    "notif_welcome",
 				App:   "DeskDeck Agent",
-				Title: "PC Host Native đang chạy siêu nhẹ",
-				Body:  "Sẵn sàng nhận chạm & shortcut từ điện thoại trên " + hostname,
+				Title: tr(lang, "notif_welcome_title"),
+				Body:  tr(lang, "notif_welcome_body", hostname),
 				Time:  time.Now().Format("15:04"),
 			},
 		},
+	}
+}
+
+func (tc *TelemetryCollector) SyncLanguage(lang string) {
+	norm := normalizeLanguage(lang)
+	tc.mu.Lock()
+	defer tc.mu.Unlock()
+	if !tc.hasCustomMedia {
+		tc.mediaTitle = tr(norm, "media_idle")
+		tc.mediaArtist = tr(norm, "media_source")
+	}
+	for i := range tc.notifications {
+		if tc.notifications[i].ID == "notif_welcome" {
+			tc.notifications[i].Title = tr(norm, "notif_welcome_title")
+			tc.notifications[i].Body = tr(norm, "notif_welcome_body", tc.hostname)
+		}
 	}
 }
 
@@ -244,6 +264,7 @@ func (tc *TelemetryCollector) readNetworkSpeedLocked() (float64, float64) {
 }
 
 func (tc *TelemetryCollector) Collect(cfg HostConfig) TelemetrySnapshot {
+	lang := normalizeLanguage(cfg.Language)
 	tc.mu.Lock()
 	defer tc.mu.Unlock()
 
@@ -335,7 +356,7 @@ func (tc *TelemetryCollector) Collect(cfg HostConfig) TelemetrySnapshot {
 		GitOpenPrs:          tc.cachedGit.Prs,
 		AiProvider:          "Local Dev Session",
 		AiQuotaRemainingPct: 82,
-		AiBurnRateText:      "Ổn định",
+		AiBurnRateText:      tr(lang, "burn_stable"),
 		AiPendingPrompt:     promptCopy,
 		Notifications:       notifs,
 		Apps:                appsCopy,

@@ -3,7 +3,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -22,12 +24,21 @@ var (
 	procGetSystemTimes     = kernel32.NewProc("GetSystemTimes")
 	procGetDiskFreeSpaceEx = kernel32.NewProc("GetDiskFreeSpaceExW")
 	procGetCurrentProcess  = kernel32.NewProc("GetCurrentProcess")
+	procOpenProcess        = kernel32.NewProc("OpenProcess")
+	procGetExitCodeProcess = kernel32.NewProc("GetExitCodeProcess")
+	procCloseHandle        = kernel32.NewProc("CloseHandle")
 	procGetProcessMemInfo  = psapi.NewProc("GetProcessMemoryInfo")
 	procLockWorkStation    = user32.NewProc("LockWorkStation")
 	procKeybdEvent         = user32.NewProc("keybd_event")
 )
 
-const createNoWindow = 0x08000000
+const (
+	createNoWindow               = 0x08000000
+	detachedProcess              = 0x00000008
+	createNewProcessGroup        = 0x00000200
+	processQueryLimitedInfo      = 0x1000
+	winStillActive               = 259
+)
 
 type memoryStatusEx struct {
 	Length               uint32
@@ -73,6 +84,39 @@ func hideSubprocessWindow(cmd *exec.Cmd) {
 		HideWindow:    true,
 		CreationFlags: createNoWindow,
 	}
+}
+
+func detachSubprocessPlatform(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: detachedProcess | createNewProcessGroup | createNoWindow,
+	}
+}
+
+func isProcessAlivePlatform(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	handle, _, _ := procOpenProcess.Call(processQueryLimitedInfo, 0, uintptr(pid))
+	if handle == 0 {
+		return false
+	}
+	defer procCloseHandle.Call(handle)
+
+	var exitCode uint32
+	ret, _, _ := procGetExitCodeProcess.Call(handle, uintptr(unsafe.Pointer(&exitCode)))
+	if ret == 0 {
+		return false
+	}
+	return exitCode == winStillActive
+}
+
+func stopProcessPlatform(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Kill()
 }
 
 func readProcessRSSMBPlatform() float64 {
@@ -184,7 +228,7 @@ var (
 	volActive bool
 )
 
-func applySystemVolumePlatform(vol int) {
+func applySystemVolumePlatform(ctx context.Context, vol int) {
 	volMu.Lock()
 	volTarget = vol
 	if volActive {
@@ -196,6 +240,15 @@ func applySystemVolumePlatform(vol int) {
 
 	go func() {
 		for {
+			select {
+			case <-ctx.Done():
+				volMu.Lock()
+				volActive = false
+				volMu.Unlock()
+				return
+			default:
+			}
+
 			volMu.Lock()
 			target := volTarget
 			volTarget = -1
@@ -232,7 +285,7 @@ public class Vol {
 "@
 [Vol]::Set(%.2f)
 `, scalar)
-			cmd := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript)
+			cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psScript)
 			hideSubprocessWindow(cmd)
 			_ = cmd.Run()
 		}

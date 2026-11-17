@@ -44,6 +44,7 @@ type DeckLayoutConfig struct {
 }
 
 type HostConfig struct {
+	Language string           `json:"language"`
 	Token    string           `json:"token"`
 	PCName   string           `json:"pcName"`
 	RepoPath string           `json:"repoPath"`
@@ -52,12 +53,24 @@ type HostConfig struct {
 	Layout   DeckLayoutConfig `json:"layout"`
 }
 
-func configPath() string {
+func configDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = "."
 	}
-	return filepath.Join(home, ".deskdeck", "config.json")
+	return filepath.Join(home, ".deskdeck")
+}
+
+func configPath() string {
+	return filepath.Join(configDir(), "config.json")
+}
+
+func pidFilePath() string {
+	return filepath.Join(configDir(), "agent.pid")
+}
+
+func logFilePath() string {
+	return filepath.Join(configDir(), "agent.log")
 }
 
 func randomHexToken(nBytes int) string {
@@ -78,6 +91,7 @@ func defaultConfig() HostConfig {
 		cwd = "."
 	}
 	return HostConfig{
+		Language: DefaultLanguage,
 		Token:    randomHexToken(6),
 		PCName:   hostname,
 		RepoPath: cwd,
@@ -89,44 +103,44 @@ func defaultConfig() HostConfig {
 			{ID: "app_docker", Label: "Docker", Command: "docker_desktop", Icon: "dns", Color: "cyan"},
 		},
 		Macros: []MacroItem{
-			{ID: "macro_lock", Label: "Khóa màn hình", Hotkey: "Win+L / Ctrl+Cmd+Q", Command: "lock_screen"},
-			{ID: "macro_shot", Label: "Chụp màn hình", Hotkey: "PrtSc", Command: "screenshot"},
-			{ID: "macro_dev", Label: "Chạy Dev Server", Hotkey: "npm run dev", Command: "echo DeskDeck Dev Triggered"},
-			{ID: "macro_clean", Label: "Dọn Terminal", Hotkey: "Ctrl+L", Command: "echo Clear"},
+			{ID: "macro_lock", Label: "Lock Screen", Hotkey: "Win+L / Ctrl+Cmd+Q", Command: "lock_screen"},
+			{ID: "macro_shot", Label: "Screenshot", Hotkey: "PrtSc", Command: "screenshot"},
+			{ID: "macro_dev", Label: "Run Dev Server", Hotkey: "npm run dev", Command: "echo DeskDeck Dev Triggered"},
+			{ID: "macro_clean", Label: "Clear Terminal", Hotkey: "Ctrl+L", Command: "echo Clear"},
 		},
 		Layout: DeckLayoutConfig{
 			Version:    1,
-			PresetName: "Stream Deck Chuẩn",
+			PresetName: "Standard Stream Deck",
 			Pages: []DeckPage{
 				{
 					ID:    "page_overview",
-					Title: "Tổng quan & Focus",
+					Title: "Overview & Focus",
 					Widgets: []DeckWidgetSpec{
-						{ID: "w_clock", Type: "CLOCK_WEATHER", Title: "Đồng hồ & Hệ thống", ColSpan: 2, AccentColorKey: "cyan"},
+						{ID: "w_clock", Type: "CLOCK_WEATHER", Title: "Clock & System", ColSpan: 2, AccentColorKey: "cyan"},
 						{ID: "w_pomo", Type: "POMODORO_TIMER", Title: "Pomodoro Focus", ColSpan: 2, AccentColorKey: "red"},
 						{ID: "w_cpu", Type: "CPU_LOAD", Title: "CPU", ColSpan: 1, AccentColorKey: "cyan"},
 						{ID: "w_ram", Type: "RAM_USAGE", Title: "RAM", ColSpan: 1, AccentColorKey: "violet"},
-						{ID: "w_media", Type: "MEDIA_PLAYER", Title: "Trình phát Media", ColSpan: 2, AccentColorKey: "cyan"},
-						{ID: "w_vol", Type: "VOLUME_MIXER", Title: "Âm lượng PC", ColSpan: 2, AccentColorKey: "amber"},
-						{ID: "w_net", Type: "NETWORK_SPEED", Title: "Mạng & Ổ đĩa", ColSpan: 2, AccentColorKey: "emerald"},
+						{ID: "w_media", Type: "MEDIA_PLAYER", Title: "Media Player", ColSpan: 2, AccentColorKey: "cyan"},
+						{ID: "w_vol", Type: "VOLUME_MIXER", Title: "PC Volume", ColSpan: 2, AccentColorKey: "amber"},
+						{ID: "w_net", Type: "NETWORK_SPEED", Title: "Network & Disk", ColSpan: 2, AccentColorKey: "emerald"},
 					},
 				},
 				{
 					ID:    "page_shortcuts",
 					Title: "App & Macro Deck",
 					Widgets: []DeckWidgetSpec{
-						{ID: "w_apps", Type: "APP_LAUNCHER", Title: "Mở nhanh ứng dụng", ColSpan: 2, AccentColorKey: "cyan"},
-						{ID: "w_macros", Type: "MACRO_BUTTON", Title: "Phím tắt Macro", ColSpan: 2, AccentColorKey: "violet"},
-						{ID: "w_gpu", Type: "GPU_STATS", Title: "GPU & Nhiệt độ", ColSpan: 2, AccentColorKey: "amber"},
+						{ID: "w_apps", Type: "APP_LAUNCHER", Title: "App Launcher", ColSpan: 2, AccentColorKey: "cyan"},
+						{ID: "w_macros", Type: "MACRO_BUTTON", Title: "Macro Pad", ColSpan: 2, AccentColorKey: "violet"},
+						{ID: "w_gpu", Type: "GPU_STATS", Title: "GPU & Temp", ColSpan: 2, AccentColorKey: "amber"},
 					},
 				},
 				{
 					ID:    "page_dev",
-					Title: "Dev & Thông báo",
+					Title: "Dev & Alerts",
 					Widgets: []DeckWidgetSpec{
-						{ID: "w_ai", Type: "AI_QUOTA_PROMPT", Title: "AI Coding & Duyệt lệnh", ColSpan: 2, AccentColorKey: "violet"},
+						{ID: "w_ai", Type: "AI_QUOTA_PROMPT", Title: "AI Coding & Approvals", ColSpan: 2, AccentColorKey: "violet"},
 						{ID: "w_dev", Type: "DEV_DOCKER_GIT", Title: "Docker & Git Status", ColSpan: 2, AccentColorKey: "emerald"},
-						{ID: "w_notif", Type: "PC_NOTIFICATIONS", Title: "Thông báo PC", ColSpan: 4, AccentColorKey: "amber"},
+						{ID: "w_notif", Type: "PC_NOTIFICATIONS", Title: "PC Notifications", ColSpan: 4, AccentColorKey: "amber"},
 					},
 				},
 			},
@@ -140,6 +154,7 @@ func loadOrCreateConfig() HostConfig {
 	if err == nil {
 		var cfg HostConfig
 		if json.Unmarshal(raw, &cfg) == nil && cfg.Token != "" && len(cfg.Layout.Pages) > 0 {
+			cfg.Language = normalizeLanguage(cfg.Language)
 			if cfg.PCName == "" {
 				if h, err := os.Hostname(); err == nil {
 					cfg.PCName = h
@@ -154,13 +169,14 @@ func loadOrCreateConfig() HostConfig {
 }
 
 func saveConfig(cfg HostConfig) error {
-	p := configPath()
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	cfg.Language = normalizeLanguage(cfg.Language)
+	dir := configDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p, data, 0o644)
+	return os.WriteFile(configPath(), data, 0o644)
 }

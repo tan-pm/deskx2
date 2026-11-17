@@ -21,46 +21,50 @@
   - **Điều khiển PC tức thì**: Âm lượng hệ thống, Mute Loa/Mic, Play/Pause/Next/Prev Media, mở nhanh ứng dụng (*VS Code, Terminal, Browser, Explorer...*), chạy Macro & phím tắt.
   - **Developer Cockpit**: Trạng thái Git & Docker container, điều khiển Start/Stop container trực tiếp trên điện thoại.
   - **Tùy biến từng màn hình & từng widget** ngay trên app Android hoặc từ **PC Web Dashboard** (`http://127.0.0.1:9876`), tự động đồng bộ hai chiều qua WebSocket.
-- **PC Host Agent siêu nhẹ (Native Go `.exe` & Python)**
-  - **`deskdeck-agent.exe` (Go Native — Khuyên dùng trên Windows):** Chỉ **1 file `.exe` chạy ngay** không cần cài Python hay thư viện ngoài, tiêu tốn **~6–10 MB RAM**, dùng Win32 API trực tiếp.
-  - **`deskdeck_agent.py` (Python 3 chuẩn):** Dự phòng đa nền tảng Windows / macOS / Linux, chia sẻ trực tiếp từ trong app Android.
-  - Tự động mở Web Dashboard, hiển thị mã QR trên trình duyệt lẫn cửa sổ Terminal.
+- **PC Host Agent siêu nhẹ (Native Go `.exe` & Python — Chạy nền độc lập)**
+  - **`deskdeck-agent.exe` (Go Native — Khuyên dùng trên Windows):** Build với `-ldflags="-s -w -H windowsgui"` nên **nhấp đúp chạy ngầm ngay lập tức** không mở cửa sổ Terminal đen, tiêu tốn **~6–10 MB RAM**.
+  - **`deskdeck_agent.py` (Python 3 chuẩn):** Hỗ trợ `--background` (tự tách tiến trình nền qua `pythonw.exe` hoặc `setsid`), `--stop` tắt sạch sẽ, hoặc đóng gói `.exe` ẩn console với PyInstaller `--noconsole`.
+  - **Web Dashboard Responsive & Đa ngôn ngữ (i18n):** Mặc định **English**, chuyển nhanh **English / Tiếng Việt** trên giao diện, tự thích ứng 16:9, 16:10, 4:3, Ultrawide 21:9 & DPI Scaling 125%–150%, kèm nút **Stop Agent** để dừng tiến trình ngầm sạch sẽ.
 
 ---
 
 ## Hướng dẫn sử dụng nhanh
 
-### 1. Chạy PC Host Agent trên máy tính
+### 1. Chạy PC Host Agent trên máy tính (Không giữ Terminal)
 
-#### Cách A — Windows chạy ngay bằng `.exe` (Không cần cài Python)
+#### Cách A — Windows chạy ngầm ngay bằng `.exe` (Không cần cài Python)
 1. Tải file **`deskdeck-agent.exe`** ở mục **Releases** trên GitHub.
-2. Nhấp đúp chạy `deskdeck-agent.exe` (hoặc mở PowerShell/CMD chạy `deskdeck-agent.exe`).
-3. Trình duyệt sẽ tự động mở **`http://127.0.0.1:9876`** kèm **Mã QR** & **Web Dashboard** (mã QR cũng hiển thị ngay trong cửa sổ console).
+2. Nhấp đúp chạy `deskdeck-agent.exe` — tiến trình chạy nền hoàn toàn không bật cửa sổ Console đen.
+3. Trình duyệt tự mở **`http://127.0.0.1:9876`** kèm **Mã QR**, trình chuyển đổi **English / Tiếng Việt**, trình chỉnh sửa widget và nút **Stop Agent** (hoặc chạy `deskdeck-agent.exe --stop` để dừng).
 
-#### Cách B — Chạy từ source Go hoặc Python (Windows / macOS / Linux)
+#### Cách B — Chạy nền từ source Go hoặc Python (Windows / macOS / Linux)
 ```bash
-# Chạy bằng Go (hoặc tự build .exe)
+# 1) Go Native (build file .exe ẩn console trên Windows)
 cd pc-agent-go
-go run .
-# Build file .exe trên mọi máy:
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o deskdeck-agent.exe .
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -H windowsgui" -o deskdeck-agent.exe .
+# Hoặc trên Linux/macOS chạy tách nền ngay:
+go build -o deskdeck-agent . && ./deskdeck-agent --background
 
-# Hoặc chạy bằng Python 3 chuẩn (không cần cài thêm gói)
+# 2) Python 3 chuẩn (tự tách tiến trình nền, không giữ terminal)
 cd pc-agent
-python3 deskdeck_agent.py
+python3 deskdeck_agent.py --background
+# Windows chạy trực tiếp không console qua pythonw:
+start "" pythonw.exe deskdeck_agent.py
+# Dừng agent chạy nền sạch sẽ:
+python3 deskdeck_agent.py --stop
 ```
 
 Sau khi chạy:
-1. Trình duyệt tự động mở **`http://127.0.0.1:9876`** (hiển thị **Mã QR ghép nối** và **Trình chỉnh sửa Dashboard**). Mã QR cũng được in trực tiếp trong cửa sổ Terminal.
+1. Trình duyệt tự động mở **`http://127.0.0.1:9876`** (hiển thị **Mã QR ghép nối** và **Trình chỉnh sửa Dashboard**). Log được ghi vào `~/.deskdeck/agent.log`.
 2. Bạn có thể chia sẻ trực tiếp file `deskdeck_agent.py` từ trong ứng dụng Android sang máy tính qua nút **Cài đặt PC Agent & Dashboard**.
 
 ### 2. Kết nối từ ứng dụng Android
 
-- **Cách 1 — Wi-Fi QR (Nhanh nhất):** Mở app DeskDeck → **Quét mã QR (Wi-Fi)** → đưa camera vào mã QR trên PC Dashboard hoặc Terminal.
+- **Cách 1 — Wi-Fi QR (Nhanh nhất):** Mở app DeskDeck → **Quét mã QR (Wi-Fi)** → đưa camera vào mã QR trên PC Dashboard.
 - **Cách 2 — LAN Auto-Discovery:** Đảm bảo điện thoại và PC dùng chung Wi-Fi, chọn tên máy tính hiện ra ở mục **PC đang mở trên cùng Wi-Fi**.
 - **Cách 3 — Cáp USB (Không cần cùng Wi-Fi, không lo Firewall):**
   1. Bật *USB Debugging* trên điện thoại và cắm cáp vào PC.
-  2. Trên PC Dashboard nhấn **Kích hoạt USB (ADB Reverse)** hoặc chạy:
+  2. Trên PC Dashboard nhấn **Enable USB (ADB Reverse)** hoặc chạy:
      ```bash
      adb reverse tcp:9876 tcp:9876
      ```
@@ -89,8 +93,8 @@ Sau khi chạy:
 │   │   │       └── theme/            # Color, Typography (Space Grotesk, Inter, JetBrains Mono)
 │   │   └── res/                      # Icon, font cục bộ, strings.xml
 │   └── src/test/                     # Unit & Robolectric tests
-├── pc-agent-go/                      # PC Host Agent Native bằng Go (0 dependency, build ra .exe ~6-10MB RAM)
-├── pc-agent/                         # PC Host Agent Python 3 chuẩn (dự phòng đa nền tảng)
+├── pc-agent-go/                      # PC Host Agent Native bằng Go (0 dependency, windowsgui, ~6-10MB RAM)
+├── pc-agent/                         # PC Host Agent Python 3 chuẩn (pythonw / --background / PyInstaller)
 └── .github/workflows/
     └── release-apk.yml               # GitHub Actions tự động test, build APK + EXE & tạo Release
 ```
@@ -106,11 +110,11 @@ Sau khi chạy:
   gradle :app:testDebugUnitTest
   gradle :app:assembleDebug
   ```
-- **PC Agent Windows `.exe`** (Go `1.23+`):
+- **PC Agent Windows `.exe` ẩn Terminal** (Go `1.23+`):
   ```bash
   cd pc-agent-go
   go test ./...
-  GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o deskdeck-agent.exe .
+  GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -H windowsgui" -o deskdeck-agent.exe .
   ```
 
 ### Tự động Build APK + EXE & Tạo GitHub Release
@@ -119,5 +123,5 @@ Workflow `.github/workflows/release-apk.yml` sẽ tự động chạy mỗi khi 
 
 1. Chạy unit & Robolectric tests trên Android (`gradle :app:testDebugUnitTest`) và Go tests (`go test ./...`).
 2. Build file `.apk` (tự động ký Release nếu có cấu hình Secrets `KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`, hoặc tự dùng `debug.keystore.base64`).
-3. Cross-compile `deskdeck-agent.exe` cho Windows (`amd64`).
+3. Cross-compile `deskdeck-agent.exe` (`-H windowsgui`) cho Windows (`amd64`).
 4. Phát hành **GitHub Release** mới đính kèm đầy đủ `DeskDeck-*.apk`, `deskdeck-agent.exe` và `deskdeck_agent.py`.

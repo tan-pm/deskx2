@@ -24,12 +24,15 @@ func buildPairURI(lanIP string, port int, cfg HostConfig) string {
 }
 
 func renderDashboardHTML(lanIP string, port int, cfg HostConfig) string {
+	lang := normalizeLanguage(cfg.Language)
+	cfg.Language = lang
 	pairURI := buildPairURI(lanIP, port, cfg)
-	qrSVG := encodeQRSVG(pairURI, 210)
+	qrSVG := encodeQRSVG(pairURI, 220)
 	cfgBytes, _ := json.Marshal(cfg)
 	rssMB := fmt.Sprintf("%.1f", readProcessRSSMBPlatform())
 
 	replacer := strings.NewReplacer(
+		"__LANG__", html.EscapeString(lang),
 		"__PC_NAME__", html.EscapeString(cfg.PCName),
 		"__RSS_MB__", rssMB,
 		"__QR_SVG__", qrSVG,

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -26,6 +27,28 @@ func getOSDisplayName() string {
 }
 
 func hideSubprocessWindow(_ *exec.Cmd) {}
+
+func detachSubprocessPlatform(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid: true,
+	}
+}
+
+func isProcessAlivePlatform(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM
+}
+
+func stopProcessPlatform(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Signal(syscall.SIGTERM)
+}
 
 func readProcessRSSMBPlatform() float64 {
 	if runtime.GOOS == "linux" {
@@ -185,13 +208,13 @@ func applySystemMutePlatform(muted bool) {
 	}
 }
 
-func applySystemVolumePlatform(vol int) {
+func applySystemVolumePlatform(ctx context.Context, vol int) {
 	if runtime.GOOS == "darwin" {
-		_ = exec.Command("osascript", "-e", fmt.Sprintf("set volume output volume %d", vol)).Start()
+		_ = exec.CommandContext(ctx, "osascript", "-e", fmt.Sprintf("set volume output volume %d", vol)).Start()
 		return
 	}
 	if _, err := exec.LookPath("pactl"); err == nil {
-		_ = exec.Command("pactl", "set-sink-volume", "@DEFAULT_SINK@", fmt.Sprintf("%d%%", vol)).Start()
+		_ = exec.CommandContext(ctx, "pactl", "set-sink-volume", "@DEFAULT_SINK@", fmt.Sprintf("%d%%", vol)).Start()
 	}
 }
 

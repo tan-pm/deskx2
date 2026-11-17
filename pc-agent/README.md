@@ -1,22 +1,49 @@
-# DeskDeck PC Host Agent
+# DeskDeck PC Host Agent (Python 3)
 
-Daemon siêu nhẹ (~15–25 MB RAM) chạy trên Windows, macOS và Linux bằng **Python 3 chuẩn** (không cần cài Electron hay Node.js).
+Daemon siêu nhẹ (~15–25 MB RAM) chạy trên Windows, macOS và Linux bằng **Python 3 chuẩn** (không cần cài Electron, Node.js hay thư viện bên thứ ba).
 
-## Chạy nhanh trong 1 lệnh
+## 1. Chạy nền độc lập (Lite Process — Không giữ Terminal)
 
+### Cách A — Chạy tự tách nền đa nền tảng (`--background`)
 ```bash
-python3 deskdeck_agent.py
-# Trên Windows nếu lệnh python3 không có sẵn:
-python deskdeck_agent.py
+# Khởi chạy nền và trả lại terminal ngay lập tức (Windows tự ưu tiên pythonw.exe)
+python3 deskdeck_agent.py --background
+
+# Kiểm tra log nền nếu cần:
+# ~/.deskdeck/agent.log
+
+# Dừng tiến trình nền sạch sẽ (không để lại zombie process):
+python3 deskdeck_agent.py --stop
 ```
 
-Sau khi chạy:
-1. Agent sẽ **tự động mở trình duyệt** tại **`http://127.0.0.1:9876`** (hoặc `http://localhost:9876`) và **in sẵn mã QR ngay trong cửa sổ Terminal** để quét từ app DeskDeck (Wi-Fi 1 chạm).
-2. Ngoài ra, ứng dụng Android cùng mạng Wi-Fi cũng tự động phát hiện laptop qua tín hiệu LAN để chạm 1 lần kết nối ngay.
-3. Nếu muốn dùng cáp USB, cắm điện thoại bật USB Debugging và nhấn nút **"Kích hoạt USB (ADB Reverse)"** trên Web Dashboard (hoặc chạy `adb reverse tcp:9876 tcp:9876`).
+### Cách B — Chạy không cửa sổ Console trên Windows (`pythonw.exe`)
+```powershell
+# Mở ngầm không hiện cửa sổ CMD/PowerShell đen:
+start "" pythonw.exe deskdeck_agent.py
+```
 
-## Lưu ý về Firewall
+### Cách C — Chạy nền trên Linux / macOS (`nohup` hoặc `--background`)
+```bash
+nohup python3 deskdeck_agent.py --no-browser > ~/.deskdeck/agent.log 2>&1 &
+```
 
-- **Dùng cáp USB (`adb reverse`)**: **KHÔNG cần tắt Firewall** vì kết nối đi qua đường hầm USB (`127.0.0.1:9876`).
-- **Dùng Wi-Fi (WebSocket / HTTP trên cổng `9876` và UDP `9877`)**: Không cần tắt toàn bộ Firewall, chỉ cần nhấn **Allow access** khi Windows Defender Firewall hỏi quyền cho `Python` (hoặc mở inbound `TCP 9876` và `UDP 9877` cho mạng Private/LAN). Dù dùng `ws://` hay `http://` thường qua Wi-Fi thì máy tính vẫn nhận kết nối vào cổng `9876` nên quy tắc Firewall là giống nhau.
+### Đóng gói thành file `.exe` ẩn Console (PyInstaller)
+```bash
+pip install pyinstaller
+pyinstaller --noconsole --windowed --onefile --name deskdeck-agent-py deskdeck_agent.py
+```
+File thực thi sẽ nằm tại `dist/deskdeck-agent-py.exe`, chạy ngầm trực tiếp không hiện Terminal và có thể tắt bất kỳ lúc nào qua nút **Stop Agent / Dừng Agent** trên Web Dashboard (`http://127.0.0.1:9876`) hoặc `deskdeck-agent-py.exe --stop`.
 
+---
+
+## 2. Giao diện Responsive & Đa ngôn ngữ (i18n)
+
+- **Ngôn ngữ mặc định:** **English**, chuyển nhanh **English ↔ Tiếng Việt** ngay trên thanh tiêu đề của Web Dashboard (tự động lưu xuống `~/.deskdeck/config.json` & `localStorage`).
+- **Tương thích mọi tỷ lệ màn hình:** `16:9`, `16:10`, `4:3`, Ultrawide `21:9`, và tự co giãn mượt khi resize cửa sổ hoặc bật DPI Scaling `125%` – `150%`.
+
+---
+
+## 3. Lưu ý về Firewall
+
+- **Dùng cáp USB (`adb reverse`):** **KHÔNG cần tắt Firewall** vì kết nối đi qua đường hầm USB (`127.0.0.1:9876`).
+- **Dùng Wi-Fi (`TCP 9876`, `UDP 9877`):** Không cần tắt toàn bộ Firewall; chỉ cần chọn **Allow access** khi Windows Defender Firewall hỏi quyền (hoặc mở inbound `TCP 9876` & `UDP 9877` cho mạng Private/LAN).
