@@ -1,0 +1,107 @@
+name: Build APK and Create Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Test, Build APK & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Prepare Android signing keystore
+        id: keystore
+        env:
+          RELEASE_KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$RELEASE_KEYSTORE_B64" ] && [ -n "$RELEASE_STORE_PASSWORD" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
+            echo "$RELEASE_KEYSTORE_B64" | base64 --decode > my-upload-key.jks
+            echo "build_type=release" >> "$GITHUB_OUTPUT"
+            echo "gradle_task=:app:assembleRelease" >> "$GITHUB_OUTPUT"
+          else
+            if [ -f debug.keystore.base64 ]; then
+              base64 --decode debug.keystore.base64 > debug.keystore
+            else
+              keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            fi
+            echo "build_type=debug" >> "$GITHUB_OUTPUT"
+            echo "gradle_task=:app:assembleDebug" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Run Unit & Robolectric Tests
+        run: gradle :app:testDebugUnitTest
+
+      - name: Build Android APK
+        env:
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle ${{ steps.keystore.outputs.gradle_task }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Test & Build Windows PC Agent (.exe)
+        working-directory: pc-agent-go
+        run: |
+          mkdir -p ../dist
+          go vet ./...
+          go test -v ./...
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../dist/deskdeck-agent.exe .
+
+      - name: Collect APK & PC Agent artifacts
+        id: package
+        run: |
+          mkdir -p dist
+          VERSION_TAG="v1.0.${{ github.run_number }}"
+          BUILD_TYPE="${{ steps.keystore.outputs.build_type }}"
+          APK_SOURCE=$(find app/build/outputs/apk/"$BUILD_TYPE" -name "*.apk" | head -n 1)
+          if [ -z "$APK_SOURCE" ]; then
+            echo "APK output not found in app/build/outputs/apk/$BUILD_TYPE"
+            exit 1
+          fi
+          APK_NAME="DeskDeck-${VERSION_TAG}-${BUILD_TYPE}.apk"
+          cp "$APK_SOURCE" "dist/${APK_NAME}"
+          cp pc-agent/deskdeck_agent.py "dist/deskdeck_agent.py"
+          echo "tag_name=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
+          echo "apk_name=${APK_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deskdeck-release-${{ steps.package.outputs.tag_name }}
+          path: dist/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag_name }}
+          name: DeskDeck ${{ steps.package.outputs.tag_name }}
+          generate_release_notes: true
+          files: |
+            dist/${{ steps.package.outputs.apk_name }}
+            dist/deskdeck-agent.exe
+            dist/deskdeck_agent.py

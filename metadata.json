@@ -1,0 +1,10 @@
+{
+  "name": "DeskDeck",
+  "description": "Màn hình phụ thông minh và bảng điều khiển PC 1 chạm qua Wi-Fi \u0026 USB.",
+  "requestFramePermissions": [
+    "CAMERA"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
